@@ -1,0 +1,493 @@
+$(document).ready( function () {
+    GetDataOnPageLoadDataCodeMaster();
+});
+
+function SaveCodeMaster() {
+    var isValid = true;
+    isValid = RequiredSubmitFunction();
+    if (isValid) {
+        var MasterName = $("#MasterName").val();
+        if (MasterName.length < 1) {
+            toastr.warning("Master Name input Must be more then 2 Digit!!");
+            return;
+        }
+        var MasterId = $("#MasterId").val();
+        var MasterType = $("#MasterType").val();
+        var MasterCode = $("#MasterCode").val();
+        var MasterValue = $("#MasterValue").val();
+        var DisplayName = $("#DisplayName").val();
+        var AdditionalValue = $("#AdditionalValue").val();
+        var data = {
+            'MasterId': MasterId,
+            'MasterCode': MasterCode,
+            'MasterType': MasterType,
+            'MasterName': MasterName,
+            'MasterValue': MasterValue,
+            'AdditionalValue': AdditionalValue,
+            'DisplayName': DisplayName,
+        };
+        $.ajax({
+            type: "POST",
+            url: "/CodeMaster/CodeMaster/CodeMasterCreateOrUpdate",
+            data: data,
+            success: function (data) {
+                if (!data.Success) {
+                    toastr.warning(data.Message);
+                }
+                else {
+                    ClearUICodeMaster();
+                    GetDataOnPageLoadDataCodeMaster();
+                    toastr.success(data.Message);
+                }
+            }
+        });
+    }
+}
+//Code Master
+function GetDataOnPageLoadDataCodeMaster() {
+    var MasterType = $("#MasterType").val();
+    var data = new FormData;
+    data.append("MasterType", MasterType);
+    $.ajax({
+        type: "POST",
+        data: data,
+        contentType: false,
+        processData: false,
+        url: "/CodeMaster/CodeMaster/CodeMasterList",
+        success: function (response) {
+            $("#CodeMasterList").html(response);
+            $('#DataTableCodeMaster').DataTable({
+                "paging": true,
+                "pageLength": 10,
+                "lengthChange": true,
+                "searching": true,
+                "ordering": false,
+                "info": true,
+                "autoWidth": false,
+                "responsive": true,
+            });
+        }
+    })
+}
+//Code Master
+function ClearUICodeMaster() {
+    $("#MasterCode").val('');
+    $("#MasterValue").val('');
+    $("#MasterName").val('');
+    $("#DisplayName").val('');
+    $("#AdditionalValue").val('');
+    $("#btnSaveCodeMaster").html('Submit');
+    $("#btnSaveCodeMaster").removeClass("btn btn-md btn-success").addClass('btn btn-md btn-primary');
+}
+//Code Master
+function GetMasterIdFunction(MasterId) {
+    var param = {};
+    param.MasterId = MasterId;
+
+    $.get("/CodeMaster/CodeMaster/EditByMasterId", param, function (res) {
+        if (!res.Success) {
+            toastr.warning(res.Message);
+        }
+        else {
+            $("#MasterId").val(res.Record.MasterId);
+            $("#MasterCode").val(res.Record.MasterCode);
+            $("#AdditionalValue").val(res.Record.AdditionalValue);
+            $("#MasterType").val(res.Record.MasterType);
+            $("#MasterValue").val(res.Record.MasterValue);
+            $("#MasterName").val(res.Record.MasterName);
+            $("#DisplayName").val(res.Record.DisplayName);
+            $("#btnSaveCodeMaster").html('Update');
+            $("#btnSaveCodeMaster").removeClass("btn btn-md btn-primary").addClass('btn btn-md btn-success');
+        }
+    });
+}
+
+
+
+
+
+using IMS.BLL.Admin;
+using IMS.BLL.CodeMaster;
+using IMS.MODELS.CodeMaster;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+
+namespace IMS.UI.Areas.CodeMaster.Controllers
+{
+    [Area("CodeMaster")]
+    [Authorize]
+    public class CodeMasterController : Controller
+    {
+        private ICodeMasterRepository _iCodeMasterRepository;
+        private IAdminRepository _iAdminRepository;
+        private readonly IWebHostEnvironment _webHostEnvironment;
+        public CodeMasterController(ICodeMasterRepository iCodeMasterRepository, IWebHostEnvironment webHostEnvironment, IAdminRepository iAdminRepository)
+        {
+            _iCodeMasterRepository = iCodeMasterRepository;
+            _webHostEnvironment = webHostEnvironment;
+            _iAdminRepository = iAdminRepository;
+        }
+        public IActionResult CodeMaster()
+        {
+            CodeMasterModel model = new CodeMasterModel();
+            model.CodeMasterTypeList = _iCodeMasterRepository.GetAllCodeMasterType().Select(x => new SelectListItem { Text = x.MasterTypeName, Value = x.MasterTypeId.ToString() }).ToList();
+            model.CodeMasterTypeList.Insert(0, new SelectListItem { Text = "Select", Value = "0" });
+            return View(model);
+        }
+        public IActionResult CodeMasterList(CodeMasterModel model)
+        {
+            var result=_iCodeMasterRepository.GetAllMasterCode().ToList();
+            if (model.MasterType!=0) 
+            {
+                var s = result.Where(x => x.MasterType == model.MasterType).ToList();
+                return PartialView("_CodeMasterList", s);
+            }
+            return PartialView("_CodeMasterList",result);
+        }
+        public JsonResult CodeMasterCreateOrUpdate(CodeMasterModel model)
+        {
+            try
+            {
+                if (model.MasterId == 0)
+                {
+                    var Isvalid = _iCodeMasterRepository.GetAllMasterCode().Where(x =>x.MasterType==model.MasterType && x.MasterName == model.MasterName && x.MasterCode == model.MasterCode).FirstOrDefault();
+                    if (Isvalid != null)
+                    {
+                        return Json(new { Success = false, Message = model.MasterName + " Master Name" + " " + "Already Exits" });
+                    }
+                    string userName = User.FindFirst("UserId")?.Value;
+                    Guid userNameGuid;
+                    if (Guid.TryParse(userName, out userNameGuid))
+                    {
+                        model.CreateUser = userNameGuid;
+                        _iCodeMasterRepository.AddMasterCode(model);
+                        return Json(new { Success = true, Message = "Code Master Save Successfully." });
+                    }
+                    return Json(new { Success = false, Message = "Something Went Wrong Please try Again" });
+                }
+                else
+                {
+                    var result = _iCodeMasterRepository.GetAllMasterCode().Where(x => x.MasterId != model.MasterId && x.MasterName == model.MasterName && x.MasterType==model.MasterType && x.MasterCode==model.MasterCode).FirstOrDefault();
+                    if (result != null)
+                    {
+                        return Json(new { Success = false, Message = "Master Name is already exist in Another Data! " });
+                    }                   
+                    string userName = User.FindFirst("UserId")?.Value;
+                    Guid userNameGuid;
+                    if (Guid.TryParse(userName, out userNameGuid))
+                    {
+                        model.EditUser = userNameGuid;
+                        model.EditDate = DateTime.Now;
+                        _iCodeMasterRepository.UpdateMasterCode(model);
+                        return Json(new { Success = true, Message = "Updated Successfuly" });
+                    }
+                    return Json(new { Success = false, Message = "Something Went Wrong Please try Again" });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, ex.Message });
+            }
+
+        }
+        public ActionResult EditByMasterId(int MasterId)
+        {
+            try
+            {
+                CodeMasterModel model = new CodeMasterModel();
+                var result = _iCodeMasterRepository.GetMasterId(MasterId);
+                if (model.MasterId != 0 && result == null)
+                {
+                    return Json(new { Success = false, Message = "Code Master Data not Found" });
+                }
+                model.MasterId = result.MasterId;
+                model.MasterCode = result.MasterCode;
+                model.MasterType = result.MasterType;
+                model.MasterValue = result.MasterValue;
+                model.MasterName = result.MasterName;
+                model.DisplayName = result.DisplayName;
+                model.AdditionalValue = result.AdditionalValue;
+                model.Status = result.Status;
+                return Json(new { Success = true, Record = model });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, ex.Message });
+            }
+        }
+
+        public IActionResult CodeMasterTypeInfo()
+        {
+            return View();
+        }
+        public IActionResult CodeMasterTypeList()
+        {
+            var result = _iCodeMasterRepository.GetAllCodeMasterType().ToList();
+            return View("_CodeMasterTypeList", result);
+        }
+
+        public JsonResult CodeMasterTypeCreateOrUpdate(CodeMasterModel model)
+        {
+            try
+            {
+                if (model.MasterTypeId == 0)
+                {
+                    var Isvalid = _iCodeMasterRepository.GetAllCodeMasterType().Where(x => x.MasterTypeName == model.MasterTypeName && x.MasterTypeCode == model.MasterTypeCode).FirstOrDefault();
+                    if (Isvalid != null)
+                    {
+                        return Json(new { Success = false, Message = "Master Name and Code Already Exits" });
+                    }
+                    string userName = User.FindFirst("UserId")?.Value;
+                    Guid userNameGuid;
+                    if (Guid.TryParse(userName, out userNameGuid))
+                    {
+                        model.CreateUser = userNameGuid;
+                        _iCodeMasterRepository.AddCodeMasterType(model);
+                        return Json(new { Success = true, Message = "Code Master Save Successfully." });
+                    }
+                    return Json(new { Success = false, Message = "Something Went Wrong Please try Again" });
+                }
+                else
+                {
+                    var result = _iCodeMasterRepository.GetAllCodeMasterType().Where(x => x.MasterTypeId != model.MasterTypeId && x.MasterTypeName == model.MasterTypeName && x.MasterTypeCode == model.MasterTypeCode).FirstOrDefault();
+                    if (result != null)
+                    {
+                        return Json(new { Success = false, Message = "Master Name and Code is already exist in Another Data! " });
+                    }
+                    string userName = User.FindFirst("UserId")?.Value;
+                    Guid userNameGuid;
+                    if (Guid.TryParse(userName, out userNameGuid))
+                    {
+                        model.EditUser = userNameGuid;
+                        model.EditDate = DateTime.Now;
+                        _iCodeMasterRepository.UpdateCodeMasterType(model);
+                        return Json(new { Success = true, Message = "Updated Successfuly" });
+                    }
+                    return Json(new { Success = false, Message = "Something Went Wrong Please try Again" });
+                }
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, ex.Message });
+            }
+
+        }
+        public ActionResult GetEditByMasterTypeId(int MasterTypeId)
+        {
+            try
+            {
+                CodeMasterModel model = new CodeMasterModel();
+                var result = _iCodeMasterRepository.GetCodeMasterTypeId(MasterTypeId);
+                if (model.MasterTypeId != 0 && result == null)
+                {
+                    return Json(new { Success = false, Message = "Module Id not Found" });
+                }
+                model.MasterTypeId = result.MasterTypeId;
+                model.Department = result.Department;
+                model.MasterTypeName = result.MasterTypeName;
+                model.MasterTypeCode = result.MasterTypeCode;
+                model.Status = result.Status;
+                return Json(new { Success = true, Record = model });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { Success = false, ex.Message });
+            }
+        }
+    }
+}
+
+
+
+using IMS.BLL.CodeMaster;
+using IMS.ENTITYES.DATA;
+using IMS.MODELS.CodeMaster;
+namespace IMS.DLL.CodeMasters
+{
+    public class CodeMasterRepository : ICodeMasterRepository
+    {
+        private InventoryDbContext _context;
+
+        public CodeMasterRepository(InventoryDbContext context)
+        {
+            _context = context;
+        }
+
+        public void AddMasterCode(CodeMasterModel model)
+        {
+            try
+            {
+                InventoryCodeMaster obj = new InventoryCodeMaster();
+                obj.MasterType = model.MasterType;
+                obj.MasterCode = model.MasterCode;
+                obj.MasterValue = model.MasterValue;
+                obj.MasterName = model.MasterName;
+                obj.DisplayName = model.DisplayName;
+                obj.AdditionalValue = model.AdditionalValue;
+                obj.Status = model.Status;  
+                obj.CreateUser = model.CreateUser;
+                obj.CreateDate = DateTime.Now;
+                obj.EditDate = DateTime.Now;
+                _context.InventoryCodeMasters.Add(obj);
+                _context.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+
+        public List<CodeMasterModel> GetAllMasterCode()
+        {
+            try
+            {
+                var result = _context.InventoryCodeMasters.GroupJoin(_context.InventoryCodeMasterTypes,
+                        a => a.MasterType,
+                        b => b.MasterTypeId,
+                        (a, b) => new { a, b = b.DefaultIfEmpty() }
+                    )
+                    .Select(x => new CodeMasterModel
+                    {
+                        MasterId = x.a.MasterId,
+                        MasterCode = x.a.MasterCode,
+                        MasterType = x.a.MasterType,
+                        MasterValue = x.a.MasterValue,
+                        MasterName = x.a.MasterName,
+                        AdditionalValue = x.a.AdditionalValue,
+                        DisplayName = x.a.DisplayName,
+                        MasterTypeName = x.b.FirstOrDefault().MasterTypeName
+                    })
+                    .OrderBy(x => x.MasterType)
+                    .ThenBy(x => x.MasterValue)
+                    .ToList();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+
+        public CodeMasterModel GetMasterId(int MasterId)
+        {
+            try
+            {
+                var result = _context.InventoryCodeMasters.Where(x => x.MasterId == MasterId)
+                           .Select(x => new CodeMasterModel
+                           {
+                               MasterId = x.MasterId,
+                               MasterCode = x.MasterCode,
+                               MasterType = x.MasterType,
+                               MasterValue = x.MasterValue,
+                               MasterName = x.MasterName,
+                               DisplayName = x.DisplayName,
+                               AdditionalValue = x.AdditionalValue,
+                               Status = x.Status,
+                           }).FirstOrDefault();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+
+        public void UpdateMasterCode(CodeMasterModel model)
+        {
+            try
+            {
+                var result = _context.InventoryCodeMasters.FirstOrDefault(x => x.MasterId == model.MasterId);
+                result.MasterCode = model.MasterCode;
+                result.MasterType = model.MasterType;
+                result.MasterValue = model.MasterValue;
+                result.MasterName = model.MasterName;
+                result.DisplayName = model.DisplayName;
+                result.AdditionalValue = model.AdditionalValue;
+                result.Status = model.Status;
+                result.EditUser = model.EditUser;
+                result.EditDate = DateTime.Now;
+                _context.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+
+                throw new Exception(ex.Message);
+            }
+        }
+        public List<CodeMasterModel> GetAllCodeMasterType()
+        {
+            try
+            {
+                var result = _context.InventoryCodeMasterTypes
+                .Select(x => new CodeMasterModel
+                {
+                    MasterTypeId = x.MasterTypeId,
+                    Department = x.Department,
+                    MasterTypeName = x.MasterTypeName,
+                    MasterTypeCode = x.MasterTypeCode,
+                    Status = x.Status,
+                }).ToList();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+
+        public void AddCodeMasterType(CodeMasterModel model)
+        {
+            try
+            {
+                InventoryCodeMasterType obj = new InventoryCodeMasterType();
+                obj.Department = model.Department;
+                obj.MasterTypeName = model.MasterTypeName;
+                obj.MasterTypeCode = model.MasterTypeCode;
+                obj.Status = model.Status;
+                obj.CreateUser = model.CreateUser;
+                obj.CreateDate = DateTime.Now;
+                obj.EditDate = DateTime.Now;
+                _context.InventoryCodeMasterTypes.Add(obj);
+                _context.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+
+        public void UpdateCodeMasterType(CodeMasterModel model)
+        {
+            var result = _context.InventoryCodeMasterTypes.Where(x => x.MasterTypeId == model.MasterTypeId).FirstOrDefault();
+            result.Department = model.Department;
+            result.MasterTypeName = model.MasterTypeName;
+            result.MasterTypeCode = model.MasterTypeCode;
+            result.Status = model.Status;
+            result.EditUser = model.EditUser;
+            result.EditDate = DateTime.Now;
+            _context.SaveChanges();
+        }
+
+        public CodeMasterModel GetCodeMasterTypeId(int MasterTypeId)
+        {
+            try
+            {
+                var result = _context.InventoryCodeMasterTypes.Where(x => x.MasterTypeId == MasterTypeId)
+                           .Select(x => new CodeMasterModel
+                           {
+                               MasterTypeId = x.MasterTypeId,
+                               Department = x.Department,
+                               MasterTypeName = x.MasterTypeName,
+                               MasterTypeCode = x.MasterTypeCode,
+                               Status = x.Status,
+                           }).FirstOrDefault();
+                return result;
+            }
+            catch (Exception ex)
+            {
+                throw new Exception(ex.Message);
+            }
+        }
+    }
+}
